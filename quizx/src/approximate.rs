@@ -7,15 +7,11 @@ use crate::simplify::basic_simp;
 pub fn basic_greedy(c: Circuit, err_budget: f64) -> Graph {
     let mut g: Graph = c.to_graph();
     let mut count = two_qubit_count(&g);
-    println!("Two-qubit count before: {count}");
-
     let mut total_err: f64 = 0.0;
-
     let squashable_vertices: Vec<usize> = g.vertices()
         .into_iter()
         .filter(|&i| g.phase(i).to_f64() % 0.5 != 0.0)
         .collect();
-
     for v in squashable_vertices{
         let phase = g.phase(v).to_f64();
         let phase_rounded = (phase * 2.0).round()/2.0;
@@ -33,10 +29,7 @@ pub fn basic_greedy(c: Circuit, err_budget: f64) -> Graph {
             };
         };
     };
-    println!("Total error: {}", total_err);
     basic_simp(&mut g);
-    let count_after = two_qubit_count(&g);
-    println!("Two-qubit count after: {count_after}");
     g
 }
 
@@ -84,7 +77,7 @@ pub fn two_qubit_basic_anneal(mut g: Graph, err_budget: f64, max_iter: usize, co
     // Remove vertices that would exceed the error budget (rough upper bound)
     vertex_list.retain(|&v| total_err + (round_error_dict[&v] * 1.5) <= err_budget);
     if vertex_list.is_empty() {
-        println!("All gates would break error budget, nothing to squash.");
+        if !quiet{println!("All gates would break error budget, nothing to squash.")};
         return g;
     }
     // Create probability list
