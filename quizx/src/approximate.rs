@@ -1,34 +1,43 @@
-use crate::circuit::*;
 use crate::vec_graph::*;
 use rand::prelude::*;
 use std::collections::HashMap;
 use crate::simplify::basic_simp;
 
-pub fn basic_greedy(c: Circuit, err_budget: f64) -> Graph {
-    let mut g: Graph = c.to_graph();
-    let mut count = two_qubit_count(&g);
+pub fn basic_greedy(mut g: Graph, err_budget: f64) -> Graph {
     let mut total_err: f64 = 0.0;
+    basic_simp(&mut g);
+    let mut count = two_qubit_count(&g);
     let squashable_vertices: Vec<usize> = g.vertices()
         .into_iter()
         .filter(|&i| g.phase(i).to_f64() % 0.5 != 0.0)
         .collect();
-    for v in squashable_vertices{
+    let mut rounded_phase_dict = std::collections::HashMap::new();
+    let mut round_error_dict = std::collections::HashMap::new();
+    for v in squashable_vertices {
         let phase = g.phase(v).to_f64();
-        let phase_rounded = (phase * 2.0).round()/2.0;
-        let difference = phase_rounded - phase;
-        let norm_err = (((difference/2.0) * std::f64::consts::PI).sin()).abs() * 2.0;
-        if (total_err + norm_err) < err_budget{
+        let rounded_phase = (phase * 2.0).round() / 2.0;
+        let round_error = (rounded_phase - phase).abs();
+        rounded_phase_dict.insert(v, rounded_phase);
+        round_error_dict.insert(v, round_error);
+    }
+    let mut sorted_vertices: Vec<usize> = round_error_dict.keys().cloned().collect();
+    sorted_vertices.sort_by(|&a, &b| round_error_dict[&a].partial_cmp(&round_error_dict[&b]).unwrap());
+    for &v in &sorted_vertices {
+        let norm_err = 2.0 * (std::f64::consts::PI * round_error_dict[&v] / 2.0).sin().abs();
+        if total_err + norm_err < err_budget {
             let mut g_test = g.clone();
-            g_test.set_phase(v,phase_rounded);
+            g_test.set_phase(v, rounded_phase_dict[&v]);
             basic_simp(&mut g_test);
-            let count_new = two_qubit_count(&g_test);
-            if count_new < count{
-                count = count_new;
-                g.set_phase(v,phase_rounded);
+            let new_count = two_qubit_count(&g_test);
+            if new_count < count {
                 total_err += norm_err;
-            };
-        };
-    };
+                g.set_phase(v, rounded_phase_dict[&v]);
+                count = new_count;
+            }
+        } else {
+            break;
+        }
+    }
     basic_simp(&mut g);
     g
 }
