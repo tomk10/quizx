@@ -22,6 +22,27 @@ use num::Rational64;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
+fn qft_qasm_gen(qubits: i64, filename: &str) -> io::Result<()> {
+    let file = File::create(filename)?;
+    let mut writer = LineWriter::new(file);
+    writeln!(writer, "OPENQASM 2.0;")?;
+    writeln!(writer, "include \"qelib1.inc\";")?;
+    writeln!(writer, "qreg q[{}];", qubits)?;
+    for i in 0..qubits {
+        writeln!(writer, "h q[{}];", i)?;
+        for j in (i + 1)..qubits {
+            let p = 2u32.pow((j - i) as u32) as f64; // Compute the parameter `p`
+            writeln!(writer, "rz(1/{}*pi) q[{}];", p, j)?;  // Apply `rz` gate with parameter `p`
+            writeln!(writer, "cx q[{}], q[{}];", j, i)?;     // Apply controlled-X (CX) gate
+            writeln!(writer, "rz(-1/{}*pi) q[{}];", p, i)?; // Apply inverse `rz` to i
+            writeln!(writer, "cx q[{}], q[{}];", j, i)?;     // Apply CX gate again
+            writeln!(writer, "rz(1/{}*pi) q[{}];", p, i)?;  // Apply final `rz` to i
+        }
+    }
+    writer.flush()?;
+    println!("QASM file successfully written to '{}'", filename);
+    Ok(())
+}
 pub struct RandomCircuitBuilder {
     pub rng: StdRng,
     pub qubits: usize,
