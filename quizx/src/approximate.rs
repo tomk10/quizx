@@ -208,3 +208,62 @@ fn acceptance_probability(new_tq: usize, old_tq: usize, temp: f64) -> f64 {
 pub fn two_qubit_count(g: &impl GraphLike) -> usize {
     g.num_edges() - g.num_vertices() + g.inputs().len()
 }
+
+pub fn c_phase_approx(mut g: Graph, err_budget: f64) -> Graph {
+    basic_simp(&mut g);
+    let mut squashable_vertices = c_phase_squashable_gates(&g);
+    let mut count = two_qubit_count(&g);
+    let mut rounded_phase_dict = std::collections::HashMap::new();
+    let mut round_error_dict = std::collections::HashMap::new();
+    let mut total_err = 0.0;
+    for &v in &squashable_vertices {
+        let phase = g.phase(v).to_f64();
+        let rounded_phase = (phase * 2.0).round() / 2.0;
+        let round_error = (rounded_phase - phase).abs();
+        rounded_phase_dict.insert(v, rounded_phase);
+        round_error_dict.insert(v, round_error);
+    }
+    squashable_vertices.sort_by(|a, b| round_error_dict[a].partial_cmp(&round_error_dict[b]).unwrap());
+    for &v in &squashable_vertices {
+        let norm_err = 2.0 * (std::f64::consts::PI * round_error_dict[&v] / 2.0).sin().abs();
+        if total_err + norm_err < err_budget {
+            let mut g_test = g.clone();
+            g_test.set_phase(v, rounded_phase_dict[&v]);
+            basic_simp(&mut g_test);
+            let new_count = two_qubit_count(&g_test);
+            if new_count < count {
+                total_err += norm_err;
+                g.set_phase(v, rounded_phase_dict[&v]);
+                count = new_count;
+            }
+        } else {
+            break;
+        }
+    }
+    basic_simp(&mut g);
+    g
+}
+
+fn c_phase_squashable_gates(g: &impl GraphLike) -> Vec<usize> {
+    let worthy_vertices: Vec<usize> = g
+        .vertices()
+        .filter(|&v| g.phase(v).to_f64() <= 0.5 || g.phase(v).to_f64() >= 1.5)
+        .collect();
+    let mut squashable_vertices: Vec<usize>=Vec::new();
+    for v in worthy_vertices.into_iter() {
+        let neighbours = g.neighbor_vec(v);
+        if neighbours.len() == 2{
+            let next_but_1 = g.neighbor_vec(neighbours[0]);
+            let next_but_2 = g.neighbor_vec(neighbours[1]);
+            for n1 in next_but_1.iter() {
+                for n2 in next_but_2.iter() {
+                    if n1 == n2 && n1 != &v && n2 != &v {
+                        squashable_vertices.push(v);
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+    squashable_vertices
+}
